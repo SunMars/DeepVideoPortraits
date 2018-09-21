@@ -1,12 +1,5 @@
-import tensorflow as tf
-import numpy as np
-import matplotlib.pyplot as plt 
-import argparse as arg
-import os 
-import cv2
-import glob2
 
-
+from data_read import *
 
 ## prepare the data -- input the images
 ## process these images, at least normalize them to [-1,1]
