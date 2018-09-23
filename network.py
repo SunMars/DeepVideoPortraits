@@ -34,7 +34,7 @@ def atrous_conv2d(input_, output_dim, kernel_size, dilation, padding = "SAME", s
             output = tf.nn.bias_add(output, biases)
         return output
 
-#定义反卷积层
+#define deconvolution layer
 def deconv2d(input_, output_dim, kernel_size, stride, padding = "SAME", scope_name = "deconv2d"):
     input_chan = input_.get_shape()[-1]
     input_height = int(input_.get_shape()[1])
@@ -64,7 +64,6 @@ def lrelu(x, leak=0.2, scope_name = "lrelu"):
 #generator + UNet
 def generator(image, base_dim=64, reuse=False, scope_name="generator"):
     # input dimension is [1,256,256,11*3*3]
-    input_chan = int(image.get_shape()[-1]) # TODO = 99?
     dropout_rate = [0.5,0.5,0.5,0,0,0,0,0] #定义dropout的比例
     with tf.variable_scope(scope_name):
         if reuse:
@@ -72,12 +71,12 @@ def generator(image, base_dim=64, reuse=False, scope_name="generator"):
         else:
             assert tf.get_variable_scope().reuse is False
 
-	    #the first convolution layer output: [1, 128, 128, 64]
+	#the first convolution layer output: [1, 128, 128, 64]
         c1 = conv2d(input_=image, output_dim=base_dim, kernel_size=4, stride=2, scope_name='g_c1_conv')
         #lrelu the outcome
         c1_lr = lrelu(c1)
 
-	    #the second convolution layer output: [1, 64, 64, 128]
+	#the second convolution layer output: [1, 64, 64, 128]
         c2 = conv2d(input_=c1_lr, output_dim=base_dim*2, kernel_size=4, stride=2, scope_name='g_c2_conv')
         #batch normalization c2
         c2_bn = batch_norm(c2, scope_name='g_bn_c2')
@@ -126,12 +125,14 @@ def generator(image, base_dim=64, reuse=False, scope_name="generator"):
         #lrelu the outcome
         c8_bn_lr = lrelu(c8_bn)
 
-	    #the first deconvolution layer output:[1, 2, 2, 512]
+	#the first deconvolution layer output:[1, 2, 2, 512]
         d1 = deconv2d(input_=c8_bn_lr, output_dim=base_dim*8, kernel_size=4, stride=2, scope_name='g_d1')
         #batch normalization d1
         d1_bn = batch_norm(d1, scope_name='g_bn_d1')
         #random dropout 0.5
         d1_bn_dr = tf.nn.dropout(d1_bn, dropout_rate[0])
+        #Skipping connect
+        d1_bn_dr = tf.concat([d1_bn_dr, c8_bn_lr], 3)
         #relu
         d1_bn_dr_rl = tf.nn.relu(d1_bn_dr)
         #d1_refine layer output:[1, 2, 2, 512]
@@ -151,12 +152,14 @@ def generator(image, base_dim=64, reuse=False, scope_name="generator"):
         #relu
         d1_rf2_bn_dr_rl = tf.nn.relu(d1_rf2_bn_dr)
         
-	    #the second deconvolution layer output:[1, 4, 4, 512]
+	#the second deconvolution layer output:[1, 4, 4, 512]
         d2 = deconv2d(input_=d1_rf2_bn_dr_rl, output_dim=base_dim*8, kernel_size=4, stride=2, scope_name='g_d2')
         #batch normalization d2
         d2_bn = batch_norm(d2, scope_name='g_bn_d2')
         #random dropout 0.5
         d2_bn_dr = tf.nn.dropout(d2_bn, dropout_rate[1])
+        #Skipping connect
+        d2_bn_dr = tf.concat([d2_bn_dr, c7_bn_lr], 3)
         #relu
         d2_bn_dr_rl = tf.nn.relu(d2_bn_dr)
         #d2_refine layer output:[1, 4, 4, 512]
@@ -176,52 +179,182 @@ def generator(image, base_dim=64, reuse=False, scope_name="generator"):
         #relu
         d2_rf2_bn_dr_rl = tf.nn.relu(d2_rf2_bn_dr)
 
-        #TODO next:
+        #the third deconvolution layer output:[1, 8, 8, 512]
+        d3 = deconv2d(input_=d2_rf2_bn_dr_rl, output_dim=base_dim*8, kernel_size=4, stride=2, scope_name='g_d3')
+        #batch normalization d3
+        d3_bn = batch_norm(d3, scope_name='g_bn_d3')
+        #random dropout 0.5
+        d3_bn_dr = tf.nn.dropout(d3_bn, dropout_rate[2])
+        #Skipping connect
+        d3_bn_dr = tf.concat([d3_bn_dr, c6_bn_lr], 3)
+        #relu
+        d3_bn_dr_rl = tf.nn.relu(d3_bn_dr)
+        #d3_refine layer output:[1, 8, 8, 512]
+        d3_rf1 = conv2d(input_=d3_bn_dr_rl, output_dim=base_dim*8, kernel_size=3, stride=1,scope_name='g_d3_rf1')
+        #batch normalization d3_rf1
+        d3_rf1_bn = batch_norm(d3_rf1, scope_name='g_bn_d3_rf1')
+        #random dropout 0.5
+        d3_rf1_bn_dr = tf.nn.dropout(d3_rf1_bn, dropout_rate[2])
+        #relu
+        d3_rf1_bn_dr_rl = tf.nn.relu(d3_rf1_bn_dr)
+        #d3_refine layer output:[1, 8, 8, 512]
+        d3_rf2 = conv2d(input_=d3_rf1_bn_dr_rl, output_dim=base_dim*8, kernel_size=3, stride=1,scope_name='g_d3_rf2')
+        #batch normalization d3_rf2
+        d3_rf2_bn = batch_norm(d3_rf2, scope_name='g_bn_d3_rf2')
+        #random dropout 0.5
+        d3_rf2_bn_dr = tf.nn.dropout(d3_rf2_bn, dropout_rate[2])
+        #relu
+        d3_rf2_bn_dr_rl = tf.nn.relu(d3_rf2_bn_dr)
+
+        #the forth deconvolution layer output:[1, 16, 16, 512]
+        d4 = deconv2d(input_=d3_rf2_bn_dr_rl, output_dim=base_dim*8, kernel_size=4, stride=2, scope_name='g_d4')
+        #batch normalization d4
+        d4_bn = batch_norm(d4, scope_name='g_bn_d4')
+        #random dropout 0
+        d4_bn_dr = tf.nn.dropout(d4_bn, dropout_rate[3])
+        #Skipping connect
+        d4_bn_dr = tf.concat([d4_bn_dr, c5_bn_lr], 3)
+        #relu
+        d4_bn_dr_rl = tf.nn.relu(d4_bn_dr)
+        #d4_refine layer output:[1, 16, 16, 512]
+        d4_rf1 = conv2d(input_=d4_bn_dr_rl, output_dim=base_dim*8, kernel_size=3, stride=1,scope_name='g_d4_rf1')
+        #batch normalization d4_rf1
+        d4_rf1_bn = batch_norm(d4_rf1, scope_name='g_bn_d4_rf1')
+        #random dropout 0
+        d4_rf1_bn_dr = tf.nn.dropout(d4_rf1_bn, dropout_rate[3])
+        #relu
+        d4_rf1_bn_dr_rl = tf.nn.relu(d4_rf1_bn_dr)
+        #d4_refine layer output:[1, 16, 16, 512]
+        d4_rf2 = conv2d(input_=d4_rf1_bn_dr_rl, output_dim=base_dim*8, kernel_size=3, stride=1,scope_name='g_d4_rf2')
+        #batch normalization d4_rf2
+        d4_rf2_bn = batch_norm(d4_rf2, scope_name='g_bn_d4_rf2')
+        #random dropout 0
+        d4_rf2_bn_dr = tf.nn.dropout(d4_rf2_bn, dropout_rate[3])
+        #relu
+        d4_rf2_bn_dr_rl = tf.nn.relu(d4_rf2_bn_dr)
+
+        #the fifth deconvolution layer output:[1, 32, 32, 256]
+        d5 = deconv2d(input_=d4_rf2_bn_dr_rl, output_dim=base_dim*4, kernel_size=4, stride=2, scope_name='g_d5')
+        #batch normalization d5
+        d5_bn = batch_norm(d5, scope_name='g_bn_d5')
+        #random dropout 0
+        d5_bn_dr = tf.nn.dropout(d5_bn, dropout_rate[4])
+        #Skipping connect
+        d5_bn_dr = tf.concat([d5_bn_dr, c4_bn_lr], 3)
+        #relu
+        d5_bn_dr_rl = tf.nn.relu(d5_bn_dr)
+        #d5_refine layer output:[1, 32, 32, 256]
+        d5_rf1 = conv2d(input_=d5_bn_dr_rl, output_dim=base_dim*4, kernel_size=3, stride=1,scope_name='g_d5_rf1')
+        #batch normalization d5_rf1
+        d5_rf1_bn = batch_norm(d5_rf1, scope_name='g_bn_d5_rf1')
+        #random dropout 0
+        d5_rf1_bn_dr = tf.nn.dropout(d5_rf1_bn, dropout_rate[4])
+        #relu
+        d5_rf1_bn_dr_rl = tf.nn.relu(d5_rf1_bn_dr)
+        #d5_refine layer output:[1, 32, 32, 256]
+        d5_rf2 = conv2d(input_=d5_rf1_bn_dr_rl, output_dim=base_dim*4, kernel_size=3, stride=1,scope_name='g_d5_rf2')
+        #batch normalization d5_rf2
+        d5_rf2_bn = batch_norm(d5_rf2, scope_name='g_bn_d5_rf2')
+        #random dropout 0
+        d5_rf2_bn_dr = tf.nn.dropout(d5_rf2_bn, dropout_rate[4])
+        #relu
+        d5_rf2_bn_dr_rl = tf.nn.relu(d5_rf2_bn_dr)         
+
+        #the sixth deconvolution layer output:[1, 64, 64, 128]
+        d6 = deconv2d(input_=d5_rf2_bn_dr_rl, output_dim=base_dim*2, kernel_size=4, stride=2, scope_name='g_d6')
+        #batch normalization d6
+        d6_bn = batch_norm(d6, scope_name='g_bn_d6')
+        #random dropout 0
+        d6_bn_dr = tf.nn.dropout(d6_bn, dropout_rate[5])
+        #Skipping connect
+        d6_bn_dr = tf.concat([d6_bn_dr, c3_bn_lr], 3)
+        #relu
+        d6_bn_dr_rl = tf.nn.relu(d6_bn_dr)
+        #d6_refine layer output:[1, 64, 64, 128]
+        d6_rf1 = conv2d(input_=d6_bn_dr_rl, output_dim=base_dim*2, kernel_size=3, stride=1,scope_name='g_d6_rf1')
+        #batch normalization d6_rf1
+        d6_rf1_bn = batch_norm(d6_rf1, scope_name='g_bn_d6_rf1')
+        #random dropout 0
+        d6_rf1_bn_dr = tf.nn.dropout(d6_rf1_bn, dropout_rate[5])
+        #relu
+        d6_rf1_bn_dr_rl = tf.nn.relu(d6_rf1_bn_dr)
+        #d6_refine layer output:[1, 64, 64, 128]
+        d6_rf2 = conv2d(input_=d6_rf1_bn_dr_rl, output_dim=base_dim*2, kernel_size=3, stride=1,scope_name='g_d6_rf2')
+        #batch normalization d6_rf2
+        d6_rf2_bn = batch_norm(d6_rf2, scope_name='g_bn_d6_rf2')
+        #random dropout 0
+        d6_rf2_bn_dr = tf.nn.dropout(d6_rf2_bn, dropout_rate[5])
+        #relu
+        d6_rf2_bn_dr_rl = tf.nn.relu(d6_rf2_bn_dr)  
+
+        #the seventh deconvolution layer output:[1, 128, 128, 64]
+        d7 = deconv2d(input_=d6_rf2_bn_dr_rl, output_dim=base_dim, kernel_size=4, stride=2, scope_name='g_d7')
+        #batch normalization d7
+        d7_bn = batch_norm(d7, scope_name='g_bn_d7')
+        #random dropout 0
+        d7_bn_dr = tf.nn.dropout(d7_bn, dropout_rate[6])
+        #Skipping connect
+        d7_bn_dr = tf.concat([d7_bn_dr, c2_bn_lr], 3)
+        #relu
+        d7_bn_dr_rl = tf.nn.relu(d7_bn_dr)
+        #d7_refine layer output:[1, 128, 128, 64]
+        d7_rf1 = conv2d(input_=d7_bn_dr_rl, output_dim=base_dim, kernel_size=3, stride=1,scope_name='g_d7_rf1')
+        #batch normalization d7_rf1
+        d7_rf1_bn = batch_norm(d7_rf1, scope_name='g_bn_d7_rf1')
+        #random dropout 0
+        d7_rf1_bn_dr = tf.nn.dropout(d7_rf1_bn, dropout_rate[6])
+        #relu
+        d7_rf1_bn_dr_rl = tf.nn.relu(d7_rf1_bn_dr)
+        #d7_refine layer output:[1, 128, 128, 64]
+        d7_rf2 = conv2d(input_=d7_rf1_bn_dr_rl, output_dim=base_dim, kernel_size=3, stride=1,scope_name='g_d7_rf2')
+        #batch normalization d7_rf2
+        d7_rf2_bn = batch_norm(d7_rf2, scope_name='g_bn_d7_rf2')
+        #random dropout 0
+        d7_rf2_bn_dr = tf.nn.dropout(d7_rf2_bn, dropout_rate[6])
+        #relu
+        d7_rf2_bn_dr_rl = tf.nn.relu(d7_rf2_bn_dr)  
+
+        #the eighth deconvolution layer output:[1, 256, 256, 3]
+        d8 = deconv2d(input_=d7_rf2_bn_dr_rl, output_dim=3, kernel_size=4, stride=2, scope_name='g_d8')
+        #random dropout 0
+        d8_dr = tf.nn.dropout(d8, dropout_rate[7])
+        #Skipping connect
+        d8_dr = tf.concat([d8_dr, c1_lr], 3)
+        #relu
+        d8_dr_rl = tf.nn.relu(d8_dr)
+        #d8_refine layer output:[1, 256, 256, 3]
+        d8_rf1 = conv2d(input_=d8_dr_rl, output_dim=3, kernel_size=3, stride=1,scope_name='g_d8_rf1')
+        #random dropout 0
+        d8_rf1_dr = tf.nn.dropout(d8_rf1, dropout_rate[7])
+        #relu
+        d8_rf1_dr_rl = tf.nn.relu(d8_rf1_dr)
+        #d8_refine layer output:[1, 256, 256, 3]
+        d8_rf2 = conv2d(input_=d8_rf1_dr_rl, output_dim=3, kernel_size=3, stride=1,scope_name='g_d8_rf2')
+        #random dropout 0
+        d8_rf2_dr = tf.nn.dropout(d8_rf2, dropout_rate[7])
+        #relu
+        d8_rf2_dr_rl = tf.nn.relu(d8_rf2_dr)  
+
+        return tf.nn.tanh(d8_rf2_dr_rl)
 
 
-
-
-        d1 = tf.concat([batch_norm(d1, scope_name='g_bn_d1'), e7], 3)
-	#第二个反卷积层，输出尺度[1, 4, 4, 512]
-        d2 = deconv2d(input_=tf.nn.relu(d1), output_dim=base_dim*8, kernel_size=4, stride=2, scope_name='g_d2')
-        d2 = tf.nn.dropout(d2, dropout_rate) #随机扔掉一般的输出
-        d2 = tf.concat([batch_norm(d2, scope_name='g_bn_d2'), e6], 3)
-	#第三个反卷积层，输出尺度[1, 8, 8, 512]
-        d3 = deconv2d(input_=tf.nn.relu(d2), output_dim=base_dim*8, kernel_size=4, stride=2, scope_name='g_d3')
-        d3 = tf.nn.dropout(d3, dropout_rate) #随机扔掉一般的输出
-        d3 = tf.concat([batch_norm(d3, scope_name='g_bn_d3'), e5], 3)
-	#第四个反卷积层，输出尺度[1, 16, 16, 512]
-        d4 = deconv2d(input_=tf.nn.relu(d3), output_dim=base_dim*8, kernel_size=4, stride=2, scope_name='g_d4')
-        d4 = tf.concat([batch_norm(d4, scope_name='g_bn_d4'), e4], 3)
-	#第五个反卷积层，输出尺度[1, 32, 32, 256]
-        d5 = deconv2d(input_=tf.nn.relu(d4), output_dim=base_dim*4, kernel_size=4, stride=2, scope_name='g_d5')
-        d5 = tf.concat([batch_norm(d5, scope_name='g_bn_d5'), e3], 3)
-	#第六个反卷积层，输出尺度[1, 64, 64, 128]
-        d6 = deconv2d(input_=tf.nn.relu(d5), output_dim=base_dim*2, kernel_size=4, stride=2, scope_name='g_d6')
-        d6 = tf.concat([batch_norm(d6, scope_name='g_bn_d6'), e2], 3)
-	#第七个反卷积层，输出尺度[1, 128, 128, 64]
-        d7 = deconv2d(input_=tf.nn.relu(d6), output_dim=base_dim, kernel_size=4, stride=2, scope_name='g_d7')
-        d7 = tf.concat([batch_norm(d7, scope_name='g_bn_d7'), e1], 3)
-	#第八个反卷积层，输出尺度[1, 256, 256, 3]
-        d8 = deconv2d(input_=tf.nn.relu(d7), output_dim=input_chan, kernel_size=4, stride=2, scope_name='g_d8')
-        return tf.nn.tanh(d8)
-
-#定义判别器
-def discriminator(image, targets, df_dim=64, reuse=False, scope_name="discriminator"):
+#define discriminator targets: W*H*3 from G or Ground Truth
+def discriminator(image, targets, base_dim=64, reuse=False, scope_name="discriminator"):
     with tf.variable_scope(scope_name):
         if reuse:
             tf.get_variable_scope().reuse_variables()
         else:
             assert tf.get_variable_scope().reuse is False
+
         dis_input = tf.concat([image, targets], 3)
 	#第1个卷积模块，输出尺度: 1*128*128*64
-        h0 = lrelu(conv2d(input_ = dis_input, output_dim = df_dim, kernel_size = 4, stride = 2, scope_name='d_h0_conv'))
+        h0 = lrelu(conv2d(input_ = dis_input, output_dim = base_dim, kernel_size = 4, stride = 2, scope_name='d_h0_conv'))
 	#第2个卷积模块，输出尺度: 1*64*64*128
-        h1 = lrelu(batch_norm(conv2d(input_ = h0, output_dim = df_dim*2, kernel_size = 4, stride = 2, scope_name='d_h1_conv'), scope_name='d_bn1'))
+        h1 = lrelu(batch_norm(conv2d(input_ = h0, output_dim = base_dim*2, kernel_size = 4, stride = 2, scope_name='d_h1_conv'), scope_name='d_bn1'))
 	#第3个卷积模块，输出尺度: 1*32*32*256
-        h2 = lrelu(batch_norm(conv2d(input_ = h1, output_dim = df_dim*4, kernel_size = 4, stride = 2, scope_name='d_h2_conv'), scope_name='d_bn2'))
+        h2 = lrelu(batch_norm(conv2d(input_ = h1, output_dim = base_dim*4, kernel_size = 4, stride = 2, scope_name='d_h2_conv'), scope_name='d_bn2'))
 	#第4个卷积模块，输出尺度: 1*32*32*512
-        h3 = lrelu(batch_norm(conv2d(input_ = h2, output_dim = df_dim*8, kernel_size = 4, stride = 1, scope_name='d_h3_conv'), scope_name='d_bn3'))
+        h3 = lrelu(batch_norm(conv2d(input_ = h2, output_dim = base_dim*8, kernel_size = 4, stride = 1, scope_name='d_h3_conv'), scope_name='d_bn3'))
 	#最后一个卷积模块，输出尺度: 1*32*32*1
         output = conv2d(input_ = h3, output_dim = 1, kernel_size = 4, stride = 1, scope_name='d_h4_conv')
         dis_out = tf.sigmoid(output) #在输出之前经过sigmoid层，因为需要进行log运算

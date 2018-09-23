@@ -21,4 +21,4 @@ def ImageReader(file_name, picture_path, label_path, picture_format = ".png", la
     label_resize = label_resize_t / 127.5 - 1. #归一化标签
     return picture_resize, label_resize, height, width #返回网络输入的图片，标签，还有原图片和标签的长宽 
 
-#TODO map the input to RGB [-1,1]
+#TODO map the input to RGB [-1,1] amd add these input to 99 dimension
